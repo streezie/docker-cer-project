@@ -1,0 +1,24 @@
+# use an offical node.js runtime as the base image
+FROM node:14
+
+# Set the working directory 
+WORKDIR /src
+
+# copy package.json and package-lock.json
+COPY package.json /src
+
+
+RUN npm cache clean --force 
+
+# Install dependenciess
+RUN npm install
+
+# copy the rest of application code into working directory
+COPY . /src
+
+# Exose the application port, node application default port is 8080
+EXPOSE 8080
+
+# command to run tha application
+CMD ["node", "index.js"]
+
