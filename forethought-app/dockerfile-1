@@ -1,0 +1,11 @@
+# Use the official Drupal image from the Docker Hub
+FROM httpd:latest
+
+# Set the working directory to /var/www/html
+WORKDIR /app
+
+# Copy the current directory contents into the container at /var/www/html
+COPY . /app
+
+# Expose port 80
+EXPOSE 80
