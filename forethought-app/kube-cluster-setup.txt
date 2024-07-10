@@ -1,0 +1,89 @@
+Step 1-7 --> execute on master and worker both
+Step 8,10 and 11 --> on master
+Step 9 --> on worker
+
+create machines for master and worker (minimum 2 CPU and 2 GB are required) with ubuntu operating system
+===================================================================================================
+1. Add GPG key for Docker
+
+sudo su -
+wget -O - https://download.docker.com/linux/ubuntu/gpg > ./docker.key
+gpg --no-default-keyring --keyring ./docker.gpg --import ./docker.key
+gpg --no-default-keyring --keyring ./docker.gpg --export > ./docker-archive-keyring.gpg
+sudo mv ./docker-archive-keyring.gpg /etc/apt/trusted.gpg.d/
+
+2. Add docker repository and install docker
+
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt update
+sudo apt install git wget curl -y
+sudo apt install -y docker-ce
+
+3. Install cri-dockerd for Docker support
+
+VER=$(curl -s https://api.github.com/repos/Mirantis/cri-dockerd/releases/latest|grep tag_name | cut -d '"' -f 4|sed 's/v//g')
+wget https://github.com/Mirantis/cri-dockerd/releases/download/v${VER}/cri-dockerd-${VER}.amd64.tgz
+tar xvf cri-dockerd-${VER}.amd64.tgz
+chown -R root:docker cri-dockerd
+sudo mv cri-dockerd/cri-dockerd /usr/local/bin/
+wget https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.service
+wget https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.socket
+sudo mv cri-docker.socket cri-docker.service /etc/systemd/system/
+sudo sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+sudo systemctl daemon-reload
+sudo systemctl enable cri-docker.service
+sudo systemctl enable --now cri-docker.socket
+
+4. Add the GPG key for kubernetes
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+
+5. Add kubernetes repository
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+
+6. Update the repositories
+
+sudo apt-get update
+
+
+7. Install Kubernetes packages.
+
+sudo apt-get install -y kubelet kubeadm kubectl
+
+
+8. Execute below command on master node to initialize kubernetes cluster
+
+sudo kubeadm init --apiserver-advertise-address=<master-ip-address> --cri-socket unix:///var/run/cri-dockerd.sock  --pod-network-cidr=10.244.0.0/16
+
+output of init command will give you kubeadm join command that needs to be executed on worker node
+in case join command is lost we can get it again
+kubeadm token create --print-join-command
+
+
+9. Add the worker node, execute below command on worker node
+
+kubeadm join <master-ip-address>:6443 --cri-socket unix:///var/run/cri-dockerd.sock --token st99ja.3bulo53e3wlmunbk --discovery-token-ca-cert-hash sha256:41dfafa343841da6a5460f8fa89647192ec1c7f46b3029c280ff4063b940041f
+
+
+10. Deploy pod network on master, network will be created automatically on all nodes that are part of cluster
+
+There are many network plugins available calico and flannel are 2 most popular ones
+
+Flannel -->
+kubectl apply -f https://github.com/coreos/flannel/raw/master/Documentation/kube-flannel.yml
+
+Calico --> 
+
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/tigera-operator.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/custom-resources.yaml -O
+kubectl create -f custom-resources.yaml
+
+
+11. Test operations
+
+kubectl get nodes
+kubectl run firstpod --image=nginx
+kubectl expose po firstpod --type=NodePort --port 80 --name firstsvc
